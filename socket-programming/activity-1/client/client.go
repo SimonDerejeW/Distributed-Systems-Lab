@@ -18,13 +18,22 @@ func main() {
 
     // Read a message from the command line
     reader := bufio.NewReader(os.Stdin)
-    fmt.Print("Enter a message: ")
-    message, _ := reader.ReadString('\n')
 
-    // Send the message to the server
-    fmt.Fprint(conn, message)
+    for {
 
-    // Wait for the response from the server
-    response, _ := bufio.NewReader(conn).ReadString('\n')
-    fmt.Println("Server response:", response)
+        fmt.Print("Enter a message: ")
+        message, _ := reader.ReadString('\n')
+
+        if (message == "exit\n"){
+            fmt.Println("Exiting...")
+            break
+        }
+    
+        // Send the message to the server
+        fmt.Fprint(conn, message)
+    
+        // Wait for the response from the server
+        response, _ := bufio.NewReader(conn).ReadString('\n')
+        fmt.Println("Server response:", response)
+    }
 }
