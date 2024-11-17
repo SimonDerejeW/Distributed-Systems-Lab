@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 var (
@@ -62,6 +63,8 @@ func handleClient(conn net.Conn) {
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
 	for {
+		
+		conn.SetDeadline(time.Now().Add(30 * time.Second))
 		// Read input from the client
 		message, err := reader.ReadString('\n')
 		if err != nil {
