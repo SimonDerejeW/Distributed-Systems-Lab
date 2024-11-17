@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"sync"
 )
@@ -12,6 +14,48 @@ var (
 	store = make(map[string]string)
 	mutex = &sync.Mutex{}
 )
+
+// File path for the JSON store
+const jsonFile = "store.json"
+
+// LoadStore reads the key-value store from the JSON file
+func LoadStore() error {
+	file, err := os.Open(jsonFile)
+	if err != nil {
+		// If the file does not exist, initialize an empty store
+		if os.IsNotExist(err) {
+			store = make(map[string]string)
+			return nil
+		}
+		return fmt.Errorf("could not open JSON file: %v", err)
+	}
+	defer file.Close()
+
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(&store)
+	if err != nil {
+		return fmt.Errorf("could not decode JSON file: %v", err)
+	}
+	return nil
+}
+
+// SaveStore writes the key-value store to the JSON file
+func SaveStore() error {
+	file, err := os.Create(jsonFile)
+	if err != nil {
+		return fmt.Errorf("could not create JSON file: %v", err)
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	err = encoder.Encode(store)
+	if err != nil {
+		return fmt.Errorf("could not encode JSON to file: %v", err)
+	}
+	return nil
+}
+
 
 // handleClient processes commands from the client
 func handleClient(conn net.Conn) {
@@ -50,7 +94,11 @@ func processCommand(command string) string {
 		value := parts[2]
 		mutex.Lock()
 		store[key] = value
+		err := SaveStore()
 		mutex.Unlock()
+		if err != nil {
+			return "ERROR: Could not save data"
+		}
 		return "OK: Key added/updated"
 
 	case "GET":
@@ -75,7 +123,11 @@ func processCommand(command string) string {
 		_, exists := store[key]
 		if exists {
 			delete(store, key)
+			err := SaveStore()
 			mutex.Unlock()
+			if err != nil {
+				return "ERROR: Could not save data"
+			}
 			return "OK: Key deleted"
 		}
 		mutex.Unlock()
@@ -101,6 +153,11 @@ func processCommand(command string) string {
 
 // startServer initializes the TCP server
 func startServer() {
+	err := LoadStore()
+	if err != nil {
+		fmt.Println("Error loading store from JSON:", err)
+		return
+	}
 	listener, err := net.Listen("tcp", ":8080")
 	if err != nil {
 		fmt.Println("Error starting server:", err)
