@@ -5,36 +5,56 @@ import (
 	"fmt"
 	"net"
 	"net/rpc"
+	"sync"
 )
 
 type Args struct {
 	A, B int
 }
 
-type Calculator int
+type Calculator struct {
+	lastResult int
+	mu         sync.Mutex
+}
 
 func (c *Calculator) Multiply(args *Args, reply *int) error {
 	if args.A == 0 || args.B == 0 {
 		return errors.New("multiplication by zero is not allowed")
 	}
 	*reply = args.A * args.B
+	c.SetLastResult(*reply)
 	return nil
 }
 
 func (c *Calculator) Add(args *Args, reply *int) error {
 	*reply = args.A + args.B
+	c.SetLastResult(*reply)
 	return nil
 }
 func (c *Calculator) Subtract(args *Args, reply *int) error {
 	*reply = args.A - args.B
+	c.SetLastResult(*reply)
 	return nil
 }
-func (c *Calculator) Divide(args *Args, reply *float32) error {
+func (c *Calculator) Divide(args *Args, reply *int) error {
 	if args.B == 0 {
 		return errors.New("can't divide by zero")
 	}
-	*reply = float32(args.A) / float32(args.B)
+	*reply = (args.A) / (args.B)
+	c.SetLastResult(*reply)
 	return nil
+}
+func (c *Calculator) GetLastResult(args *struct{}, reply *int) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	*reply = c.lastResult
+	return nil
+}
+
+func (c *Calculator) SetLastResult(prevResult int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.lastResult = prevResult
 }
 
 func main() {
@@ -48,6 +68,14 @@ func main() {
 	}
 
 	fmt.Println("RPC server is listening on port 1234")
-	rpc.Accept(listener)
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			fmt.Println("Connection error: ", err)
+			continue
+		}
+
+		go rpc.ServeConn(conn)
+	}
 
 }

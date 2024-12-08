@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/rpc"
+	"time"
 )
 
 type Args struct {
@@ -13,36 +14,45 @@ type Args struct {
 func main() {
 	client, err := rpc.Dial("tcp", "localhost:1234")
 	if err != nil {
-		log.Fatal("Error connecting to RPC server: ",err)
+		log.Fatalln("Error connecting to RPC server:", err)
 	}
+
 	args := Args{A: 3, B: 5}
-
-
-	var muliplyReply int
-	err = client.Call("Calculator.Multiply", args, &muliplyReply)
-	if err != nil {
-		log.Fatal("Error calling RPC: ",err)
+	var reply int
+	call := client.Go("Calculator.GetLastResult", &args, &reply, nil)
+	select {
+	case <-call.Done:
+		if call.Error != nil {
+			log.Println("RPC error:", call.Error)
+		} else {
+			fmt.Printf("Last result is: %d\n", reply)
+		}
+	case <-time.After(2 * time.Second):
+		log.Println("RPC call timed out")
 	}
-	fmt.Printf("Result of %d * %d = %d\n", args.A, args.B, muliplyReply)
 
-	var addReply int
-	err = client.Call("Calculator.Add", args, &addReply)
-	if err != nil {
-		log.Fatal("Error calling RPC: ",err)
+	call = client.Go("Calculator.Multiply", &args, &reply, nil)
+	select {
+	case <-call.Done:
+		if call.Error != nil {
+			log.Println("RPC error:", call.Error)
+		} else {
+			fmt.Printf("Result: %d\n", reply)
+		}
+	case <-time.After(2 * time.Second):
+		log.Println("RPC call timed out")
 	}
-	fmt.Printf("Result of %d + %d = %d\n", args.A, args.B, addReply)
 
-	var subtractReply int
-	err = client.Call("Calculator.Subtract", args, &subtractReply)
-	if err != nil {
-		log.Fatal("Error calling RPC: ",err)
+	call = client.Go("Calculator.GetLastResult", &args, &reply, nil)
+	select {
+	case <-call.Done:
+		if call.Error != nil {
+			log.Println("RPC error:", call.Error)
+		} else {
+			fmt.Printf("Last result is: %d\n", reply)
+		}
+	case <-time.After(2 * time.Second):
+		log.Println("RPC call timed out")
 	}
-	fmt.Printf("Result of %d - %d = %d\n", args.A, args.B, subtractReply)
 
-	var divideReply float32
-	err = client.Call("Calculator.Divide", args, &divideReply)
-	if err != nil {
-		log.Fatal("Error calling RPC: ",err)
-	}
-	fmt.Printf("Result of %d / %d = %.2f\n", args.A, args.B, divideReply)
 }
