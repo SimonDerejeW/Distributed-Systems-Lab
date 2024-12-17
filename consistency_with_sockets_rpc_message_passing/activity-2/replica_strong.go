@@ -6,36 +6,38 @@ import (
 	"net/rpc"
 	"os"
 	"sync"
+	"time" // Importing "time"
 )
 
-// Replica represents a node in the distributed system
 type Replica struct {
 	data    map[string]string
 	mu      sync.Mutex
-	peers   []string // List of peer addresses
+	peers   []string
 	ackLock sync.Mutex
-	acks    map[string]int // Track acknowledgments
+	acks    map[string]int // track acknowledgements
 }
 
-// Args defines the key-value pair for updates
 type Args struct {
-	Key   string
-	Value string
+	Key    string
+	Value  string
+	Source string // Adding "Source" field
 }
 
-// Update is an RPC method to apply an update on the replica
 func (r *Replica) Update(args *Args, reply *bool) error {
+	fmt.Println("> [UPDATE] Update request committed with args: " + args.Key + "<->" + args.Value + " sourced from: " + args.Source) // Printing source
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.data[args.Key] = args.Value
-	*reply = true // Indicate success
+	if reply != nil {
+		*reply = true
+	}
 	return nil
 }
 
-// propagateUpdates sends updates to all peers using RPC
-func (r *Replica) propagateUpdates(key, value string) {
+func (r *Replica) propagateUpdates(key, value, machineAddress string) { // Adding "machineAddress" parameter
+	time.Sleep(4 * time.Second) // Adding delay
 	r.ackLock.Lock()
-	r.acks[key] = 0 // Initialize acknowledgment count for this key
+	r.acks[key] = 0
 	r.ackLock.Unlock()
 
 	for _, peer := range r.peers {
@@ -45,28 +47,30 @@ func (r *Replica) propagateUpdates(key, value string) {
 				fmt.Println("Error connecting to peer:", peer, err)
 				return
 			}
-			defer client.Close()
 
-			args := &Args{Key: key, Value: value}
-			var reply bool
+			defer client.Close()
+			args := &Args{Key: key, Value: value, Source: machineAddress} // Adding "Source" field
+			var reply bool = false
 			err = client.Call("Replica.Update", args, &reply)
+			fmt.Println("> [PROPAGATION] Update request propagated to peer " + peer) // Printing propagation
 			if err == nil && reply {
+				fmt.Println("> [ACK] Peer " + peer + " acknowledged update request") // Printing acknowledgment
 				r.ackLock.Lock()
-				r.acks[key]++ // Increment acknowledgment count on success
+				r.acks[key]++
 				r.ackLock.Unlock()
 			}
 		}(peer)
 	}
 }
 
-// waitForAcknowledgments waits for the required number of acknowledgments
-func (r *Replica) waitForAcknowledgments(key string, required int) {
+func (r *Replica) waitForAcknowledgements(key string, quorum int) { // Adding quorum parameter
 	for {
 		r.ackLock.Lock()
-		if r.acks[key] >= required {
+		if r.acks[key] >= quorum { // Using quorum
 			r.ackLock.Unlock()
 			break
 		}
+
 		r.ackLock.Unlock()
 	}
 }
@@ -77,41 +81,43 @@ func main() {
 		return
 	}
 
-	// Parse command-line arguments
 	machineAddr := os.Args[1]
 	peers := os.Args[2:]
 
-	// Initialize the replica
 	replica := &Replica{
 		data:  make(map[string]string),
 		peers: peers,
 		acks:  make(map[string]int),
 	}
+
 	rpc.Register(replica)
 
-	// Start the RPC server
 	listener, err := net.Listen("tcp", machineAddr)
 	if err != nil {
 		panic(err)
 	}
-	defer listener.Close()
-	fmt.Printf("Replica RPC Server listening on %s\n", machineAddr)
 
-	// Accept connections and serve RPC requests
+	defer listener.Close()
+	fmt.Printf("Replica RPC server listening on %s\n", machineAddr)
+
 	go func() {
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
 				continue
 			}
+
 			go rpc.ServeConn(conn)
 		}
 	}()
 
-	// Simulate a strong consistency update
 	key, value := "key1", "value1"
-	replica.Update(&Args{Key: key, Value: value}, nil)
-	replica.propagateUpdates(key, value)
-	replica.waitForAcknowledgments(key, len(replica.peers))
-	fmt.Println("Update committed after receiving acknowledgments")
+	fmt.Println("> [INIT] Update initialized locally") // Printing initialization
+	replica.Update(&Args{Key: key, Value: value, Source: "local"}, nil) // Adding "Source" field
+	replica.propagateUpdates(key, value, machineAddr) // Adding "machineAddress" parameter
+
+	var Q int = (len(replica.peers) / 2) // Calculating quorum
+	replica.waitForAcknowledgements(key, Q) // Using quorum
+	fmt.Println("> [COMMITED] Update committed after receiving sufficient acknowledgments") // Printing commit
+	time.Sleep(5 * time.Second) // Adding delay
 }
