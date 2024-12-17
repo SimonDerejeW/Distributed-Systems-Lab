@@ -13,7 +13,7 @@ import (
 type Replica struct {
 	data  map[string]string
 	mu    sync.Mutex
-	peers []string // List of peer addresses
+	peers []string
 }
 
 // Update modifies the local data of the replica
@@ -23,10 +23,13 @@ func (r *Replica) Update(key, value string) {
 	r.data[key] = value
 }
 
-// propagateUpdates sends key-value updates to all peers
+// propagateUpdates sends key-value updates to all peers with simulated delay
 func (r *Replica) propagateUpdates(key, value string) {
+	startTime := time.Now()
 	for _, peer := range r.peers {
 		go func(peer string) {
+			// Simulate network delay
+			time.Sleep(time.Millisecond * 100) // Adjust delay as needed
 			conn, err := net.Dial("tcp", peer)
 			if err != nil {
 				fmt.Println("Error connecting to peer:", peer, err)
@@ -36,6 +39,8 @@ func (r *Replica) propagateUpdates(key, value string) {
 			fmt.Fprintf(conn, "%s:%s\n", key, value)
 		}(peer)
 	}
+	// Log the time it takes to start sending updates
+	fmt.Printf("Propagation initiated: %v elapsed since start\n", time.Since(startTime))
 }
 
 // handleConnection handles incoming messages from other replicas
@@ -79,6 +84,7 @@ func main() {
 
 	fmt.Printf("Replica listening on %s\n", machineAddr)
 
+	// Handle incoming connections
 	go func() {
 		for {
 			conn, err := listener.Accept()
@@ -91,11 +97,16 @@ func main() {
 
 	// Simulate an update
 	replica.Update("key1", "value1")
+	startPropagation := time.Now()
 	replica.propagateUpdates("key1", "value1")
 
-	time.Sleep(5 * time.Second) // Wait for updates to propagate
+	// Wait for updates to propagate
+	time.Sleep(5 * time.Second)
 
+	// Check final state and log convergence time
 	replica.mu.Lock()
 	fmt.Println("Replica Data:", replica.data)
+	convergenceTime := time.Since(startPropagation)
+	fmt.Printf("Convergence Time: %v\n", convergenceTime)
 	replica.mu.Unlock()
 }
